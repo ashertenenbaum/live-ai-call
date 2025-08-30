@@ -22,7 +22,7 @@ const SYSTEM_MESSAGE = `
 You are a helpful and bubbly AI assistant who loves to chat and provide facts, jokes, and advice.
 Keep responses friendly, positive, and inject humor or owl/dad/rickroll jokes when appropriate.
 `;
-const VOICE = 'alloy';
+const VOICE = 'verse';
 const TEMPERATURE = 0.8;
 const LOG_EVENT_TYPES = [
   'error',
