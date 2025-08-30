@@ -18,7 +18,10 @@ const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
-// Constants
+const PORT = process.env.PORT || 5050;
+const VOICE = 'verse';
+const TEMPERATURE = 0.8;
+
 const SYSTEM_MESSAGE = `
 You are a helpful AI assistant for The Clinician help desk.
 Always speak in English.
@@ -33,13 +36,9 @@ Format the final answer as JSON with keys: name, email, problem, time, tcp.
 Stay friendly and respectful.
 `;
 
-const VOICE = 'verse';
-const TEMPERATURE = 0.8;
-const PORT = process.env.PORT || 5050;
-
 // Helper: send Slack message
 const sendToSlack = async ({ name, email, problem, time, tcp }) => {
-  const message = `📞 *New Support Request Received!*\n*Name:* ${name}\n*Email:* ${email}\n*Problem:* ${problem}\n*Time:* ${time}\n*TCP Domain:* ${tcp}\n\nWe're working on this issue now.`;
+  const message = `📞 *New Support Request Received!*\n*Name:* ${name || 'N/A'}\n*Email:* ${email || 'N/A'}\n*Problem:* ${problem || 'N/A'}\n*Time:* ${time || 'N/A'}\n*TCP Domain:* ${tcp || 'N/A'}\n\nWe're working on this issue now.`;
   try {
     await axios.post(SLACK_WEBHOOK_URL, { text: message });
     console.log('Sent to Slack successfully');
@@ -48,10 +47,10 @@ const sendToSlack = async ({ name, email, problem, time, tcp }) => {
   }
 };
 
-// Root route (health check)
+// Root route
 fastify.get('/', async (req, reply) => reply.send({ message: 'AI Voice Call Server running!' }));
 
-// Twilio incoming call webhook
+// Twilio incoming call
 fastify.all('/incoming-call', async (req, reply) => {
   const host = req.headers.host;
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -76,13 +75,8 @@ fastify.register(async (fastify) => {
     console.log('Client connected to media-stream');
 
     let streamSid = null;
-    let latestMediaTimestamp = 0;
-    let lastAssistantItem = null;
-    let responseStartTimestampTwilio = null;
-
-    // Store collected user data
     let userData = { name: null, email: null, problem: null, time: null, tcp: null };
-    let allConfirmed = false; // Track if user confirmed
+    let allConfirmed = false;
 
     // Connect to OpenAI Realtime API
     const openAiWs = new WebSocket(
@@ -119,32 +113,29 @@ fastify.register(async (fastify) => {
           connection.send(JSON.stringify({ event: 'media', streamSid, media: { payload: msg.delta } }));
         }
 
-        // Capture structured JSON output from AI
+        // Collect JSON output incrementally
         if (msg.type === 'response.output_text.delta' && msg.delta) {
           try {
-            // Parse JSON if AI outputs a structured message
             const partial = msg.delta.trim();
             if (partial.startsWith('{') && partial.endsWith('}')) {
               const parsed = JSON.parse(partial);
               userData = { ...userData, ...parsed };
               console.log('Updated userData:', userData);
             }
-          } catch (err) {
-            // Ignore parse errors until AI outputs complete JSON
-          }
+          } catch {}
         }
 
-        // Confirmed user data
-        if (msg.type === 'response.completed' && !allConfirmed) {
-          const fields = Object.values(userData);
-          if (fields.every(f => f)) {
+        // Check if all fields are filled
+        if (!allConfirmed) {
+          const allFilled = Object.values(userData).every(f => f);
+          if (allFilled) {
             allConfirmed = true;
 
-            // Send to Slack
+            // Send Slack message
             await sendToSlack(userData);
 
-            // End call politely
-            const farewell = `<speak>Thank you for calling. We are working on your problem right now. Have a great day!</speak>`;
+            // Play polite farewell
+            const farewell = `<speak>Thank you for calling. We are working on your problem now. Have a great day!</speak>`;
             connection.send(JSON.stringify({
               event: 'media',
               media: { payload: Buffer.from(farewell).toString('base64') }
@@ -166,20 +157,25 @@ fastify.register(async (fastify) => {
         const data = JSON.parse(msg);
         switch (data.event) {
           case 'media':
-            latestMediaTimestamp = data.media.timestamp;
             if (openAiWs.readyState === WebSocket.OPEN) {
               openAiWs.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: data.media.payload }));
             }
             break;
           case 'start':
             streamSid = data.start.streamSid;
+            console.log('Media stream started:', streamSid);
             break;
         }
       } catch (err) { console.error('Error parsing Twilio message:', err, msg); }
     });
 
-    connection.on('close', () => {
+    // Handle premature hang-ups
+    connection.on('close', async () => {
       console.log('Client disconnected from media-stream');
+      if (!allConfirmed && Object.values(userData).some(f => f)) {
+        console.log('Sending partial data to Slack...');
+        await sendToSlack(userData);
+      }
       if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
     });
 
