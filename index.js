@@ -19,10 +19,10 @@ fastify.register(fastifyWs);
 
 // Constants
 const SYSTEM_MESSAGE = `
-You are a helpful and bubbly AI assistant who loves to chat and provide facts, jokes, and advice.
-Keep responses friendly, positive, and inject humor or owl/dad/rickroll jokes when appropriate.
+You are a helpful and professional AI assistant for the Clinician Helpdesk.
+Keep responses friendly, positive, and conversational.
 `;
-const VOICE = 'verse';
+const VOICE = 'cedar';
 const TEMPERATURE = 0.8;
 const LOG_EVENT_TYPES = [
   'error',
@@ -78,6 +78,25 @@ fastify.register(async (fastify) => {
       { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }
     );
 
+    // Send the custom greeting at the start
+    const sendInitialGreeting = () => {
+      const initialConversationItem = {
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: 'Hi, welcome to the Clinician Helpdesk, how can I assist you today?'
+            }
+          ]
+        }
+      };
+      openAiWs.send(JSON.stringify(initialConversationItem));
+      openAiWs.send(JSON.stringify({ type: 'response.create' }));
+    };
+
     const initializeSession = () => {
       const sessionUpdate = {
         type: 'session.update',
@@ -94,6 +113,9 @@ fastify.register(async (fastify) => {
       };
       console.log('Initializing OpenAI session');
       openAiWs.send(JSON.stringify(sessionUpdate));
+
+      // Send greeting after session initialized
+      setTimeout(sendInitialGreeting, 200);
     };
 
     openAiWs.on('open', () => {
