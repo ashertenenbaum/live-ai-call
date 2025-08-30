@@ -46,8 +46,10 @@ fastify.get('/', async (req, reply) => {
 // Twilio webhook for incoming calls
 fastify.all('/incoming-call', async (req, reply) => {
   const host = req.headers.host;
+
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
   <Response>
+    <!-- Step 1: initial assistant TTS -->
     <Say voice="Google.en-US-Chirp3-HD-Aoede">
       Please wait while we connect your call to the AI voice assistant.
     </Say>
@@ -55,10 +57,18 @@ fastify.all('/incoming-call', async (req, reply) => {
     <Say voice="Google.en-US-Chirp3-HD-Aoede">
       Okay, you can start talking!
     </Say>
+
+    <!-- Step 2: male neural voice greeting -->
+    <Say voice="Matthew.Neural">
+      Hi, welcome to the Clinician Helpdesk. How can I assist you today?
+    </Say>
+
+    <!-- Step 3: connect to AI -->
     <Connect>
       <Stream url="wss://${host}/media-stream"/>
     </Connect>
   </Response>`;
+
   reply.type('text/xml').send(twiml);
 });
 
@@ -78,25 +88,6 @@ fastify.register(async (fastify) => {
       { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }
     );
 
-    // Send the custom greeting at the start
-    const sendInitialGreeting = () => {
-      const initialConversationItem = {
-        type: 'conversation.item.create',
-        item: {
-          type: 'message',
-          role: 'user',
-          content: [
-            {
-              type: 'input_text',
-              text: 'Hi, welcome to the Clinician Helpdesk, how can I assist you today?'
-            }
-          ]
-        }
-      };
-      openAiWs.send(JSON.stringify(initialConversationItem));
-      openAiWs.send(JSON.stringify({ type: 'response.create' }));
-    };
-
     const initializeSession = () => {
       const sessionUpdate = {
         type: 'session.update',
@@ -113,9 +104,6 @@ fastify.register(async (fastify) => {
       };
       console.log('Initializing OpenAI session');
       openAiWs.send(JSON.stringify(sessionUpdate));
-
-      // Send greeting after session initialized
-      setTimeout(sendInitialGreeting, 200);
     };
 
     openAiWs.on('open', () => {
