@@ -36,7 +36,7 @@ Format final answers as JSON with keys: name, email, problem, time, tcp
 Stay friendly and positive.
 `;
 
-const VOICE = 'cedar';
+const VOICE = 'verse';
 const TEMPERATURE = 0.8;
 const LOG_EVENT_TYPES = [
   'error',
