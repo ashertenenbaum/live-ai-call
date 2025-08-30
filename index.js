@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
 
-// Load environment variables
 dotenv.config();
 const { OPENAI_API_KEY } = process.env;
 if (!OPENAI_API_KEY) {
@@ -12,16 +11,17 @@ if (!OPENAI_API_KEY) {
   process.exit(1);
 }
 
-// Initialize Fastify
 const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
-// Constants
+// Force English in instructions
 const SYSTEM_MESSAGE = `
-You are a helpful and professional AI assistant for the Clinician Helpdesk.
-Keep responses friendly, positive, and conversational.
+You are a helpful AI assistant for the Clinician Helpdesk.
+Always respond in English, regardless of input language.
+Keep responses friendly, professional, and conversational.
 `;
+
 const VOICE = 'cedar';
 const TEMPERATURE = 0.8;
 const LOG_EVENT_TYPES = [
@@ -38,18 +38,18 @@ const LOG_EVENT_TYPES = [
 const SHOW_TIMING_MATH = false;
 const PORT = process.env.PORT || 5050;
 
-// Root route (health check)
+// Health check
 fastify.get('/', async (req, reply) => {
   reply.send({ message: 'Twilio Media Stream Server is running!' });
 });
 
-// Twilio webhook for incoming calls
+// Incoming call webhook
 fastify.all('/incoming-call', async (req, reply) => {
   const host = req.headers.host;
 
+  // Twilio TTS with a natural pause and male neural voice greeting
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
   <Response>
-    <!-- Step 1: initial assistant TTS -->
     <Say voice="Google.en-US-Chirp3-HD-Aoede">
       Please wait while we connect your call to the AI voice assistant.
     </Say>
@@ -57,13 +57,10 @@ fastify.all('/incoming-call', async (req, reply) => {
     <Say voice="Google.en-US-Chirp3-HD-Aoede">
       Okay, you can start talking!
     </Say>
-
-    <!-- Step 2: male neural voice greeting -->
+    <Pause length="1"/>
     <Say voice="Matthew.Neural">
       Hi, welcome to the Clinician Helpdesk. How can I assist you today?
     </Say>
-
-    <!-- Step 3: connect to AI -->
     <Connect>
       <Stream url="wss://${host}/media-stream"/>
     </Connect>
@@ -72,7 +69,7 @@ fastify.all('/incoming-call', async (req, reply) => {
   reply.type('text/xml').send(twiml);
 });
 
-// WebSocket route for Twilio Media Stream
+// WebSocket route for media-stream
 fastify.register(async (fastify) => {
   fastify.get('/media-stream', { websocket: true }, (connection, req) => {
     console.log('Client connected to media-stream');
@@ -100,6 +97,7 @@ fastify.register(async (fastify) => {
             output: { format: { type: 'audio/pcmu' } },
           },
           instructions: SYSTEM_MESSAGE,
+          language: 'en'
         },
       };
       console.log('Initializing OpenAI session');
