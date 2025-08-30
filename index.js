@@ -4,12 +4,11 @@ import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
 
-// Load environment variables from .env file
+// Load environment variables
 dotenv.config();
-
 const { OPENAI_API_KEY } = process.env;
 if (!OPENAI_API_KEY) {
-  console.error('Missing OPENAI_API_KEY. Please set it in your .env file.');
+  console.error('Missing OPENAI_API_KEY in .env file.');
   process.exit(1);
 }
 
@@ -20,7 +19,7 @@ fastify.register(fastifyWs);
 
 // Constants
 const SYSTEM_MESSAGE = `
-You are a helpful and bubbly AI assistant who loves to chat and is ready to provide facts, jokes, and advice. 
+You are a helpful and bubbly AI assistant who loves to chat and provide facts, jokes, and advice.
 Keep responses friendly, positive, and inject humor or owl/dad/rickroll jokes when appropriate.
 `;
 const VOICE = 'alloy';
@@ -39,7 +38,7 @@ const LOG_EVENT_TYPES = [
 const SHOW_TIMING_MATH = false;
 const PORT = process.env.PORT || 5050;
 
-// Root route for health check
+// Root route (health check)
 fastify.get('/', async (req, reply) => {
   reply.send({ message: 'Twilio Media Stream Server is running!' });
 });
@@ -74,12 +73,9 @@ fastify.register(async (fastify) => {
     let markQueue = [];
     let responseStartTimestampTwilio = null;
 
-    // Connect to OpenAI Realtime API
     const openAiWs = new WebSocket(
       `wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview&temperature=${TEMPERATURE}&voice=${VOICE}`,
-      {
-        headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
-      }
+      { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }
     );
 
     const initializeSession = () => {
@@ -105,7 +101,6 @@ fastify.register(async (fastify) => {
       setTimeout(initializeSession, 100);
     });
 
-    // Forward OpenAI audio back to Twilio
     openAiWs.on('message', (data) => {
       try {
         const msg = JSON.parse(data);
@@ -146,7 +141,6 @@ fastify.register(async (fastify) => {
       }
     });
 
-    // Receive audio from Twilio
     connection.on('message', (msg) => {
       try {
         const data = JSON.parse(msg);
@@ -184,11 +178,11 @@ fastify.register(async (fastify) => {
   });
 });
 
-// Start Fastify server
-fastify.listen({ port: PORT }, (err) => {
+// Start Fastify server on Render
+fastify.listen({ port: PORT, host: '0.0.0.0' }, (err, address) => {
   if (err) {
     console.error(err);
     process.exit(1);
   }
-  console.log(`Server is listening on port ${PORT}`);
+  console.log(`Server is listening on ${address}`);
 });
